@@ -1,0 +1,18 @@
+{
+  "search_keyword": "junior",
+  "max_pages": 5,
+  "delay": 1.0,
+  "excluded_technologies": [],
+  "required_technologies": [],
+  "excluded_keywords": [
+    "konsultant",
+    "consultant",
+    "administrator sieci",
+    "network administrator"
+  ],
+  "schedule": "daily",
+  "sources": [
+    "pracuj_pl"
+  ],
+  "pracuj_pl_domain": "it"
+}
