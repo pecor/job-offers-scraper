@@ -23,5 +23,5 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     ports:
-      - "8080:8080"
+      - "8181:8181"
     command: ["python", "main.py", "--gui"]

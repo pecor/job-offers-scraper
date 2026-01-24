@@ -1,11 +1,13 @@
 import logging
 import threading
+from datetime import datetime, date
 
 from typing import Any
 from nicegui import ui
 from config.config_manager import ConfigManager
 from database.db_manager import DatabaseManager
 from scrapers.pracuj_pl import PracujPlScraper
+from scrapers.justjoin_it import JustJoinItScraper
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,11 @@ class MainWindow:
         self.offers_data: list[dict[str, Any]] = []
         self.offers_container = None
         self.selected_technologies: set[str] = set()
+        self.required_keywords_filter: set[str] = set()
+        self.excluded_keywords_filter: set[str] = set()
+        self.offers_count_label = None
+        self.sort_by: str = 'scraped_at'
+        self.sort_order: str = 'desc'
         
         self._create_ui()
 
@@ -79,12 +86,27 @@ class MainWindow:
                 value=self.config.get('schedule', 'daily')
             ).classes('w-full')
             
+            ui.label('Sources (select multiple)').classes('text-sm font-semibold')
+            sources_config = self.config.get('sources', ['pracuj_pl'])
+            pracuj_pl_checkbox = ui.checkbox('Pracuj.pl', value='pracuj_pl' in sources_config).classes('w-full')
+            justjoin_it_checkbox = ui.checkbox('JustJoin.it', value='justjoin_it' in sources_config).classes('w-full')
+            
             def save_config():
                 try:
                     excluded_keywords = [
                         line.strip() for line in excluded_keywords_textarea.value.split('\n')
                         if line.strip()
                     ]
+                    
+                    selected_sources = []
+                    if pracuj_pl_checkbox.value:
+                        selected_sources.append('pracuj_pl')
+                    if justjoin_it_checkbox.value:
+                        selected_sources.append('justjoin_it')
+                    
+                    if not selected_sources:
+                        ui.notify('Please select at least one source', type='warning')
+                        return
                     
                     self.config.update({
                         'search_keyword': keyword_input.value,
@@ -93,6 +115,7 @@ class MainWindow:
                         'pracuj_pl_domain': domain_select.value,
                         'excluded_keywords': excluded_keywords,
                         'schedule': schedule_select.value,
+                        'sources': selected_sources,
                     })
                     self.config.save_config()
                     ui.notify('Configuration saved!', type='positive')
@@ -116,39 +139,64 @@ class MainWindow:
                     domain = domain_select.value
                     excluded = excluded_keywords_textarea.value.split('\n')
                     
+                    selected_sources = []
+                    if pracuj_pl_checkbox.value:
+                        selected_sources.append('pracuj_pl')
+                    if justjoin_it_checkbox.value:
+                        selected_sources.append('justjoin_it')
+                    
+                    if not selected_sources:
+                        ui.notify('Please select at least one source', type='warning')
+                        return
+                    
                     self.config.update({
                         'search_keyword': keyword,
                         'max_pages': max_pages,
                         'delay': delay,
                         'pracuj_pl_domain': domain,
+                        'sources': selected_sources,
                         'excluded_keywords': [e.strip() for e in excluded if e.strip()],
                     })
                     self.config.save_config()
                     
-                    def run_scraper_thread():
+                    excluded_keywords = [e.strip() for e in excluded if e.strip()]
+                    
+                    def run_scraper_for_source(source_name: str):
+                        """Run scraper for a specific source"""
                         try:
-                            scraper = PracujPlScraper({
-                                'delay': delay,
-                                'pracuj_pl_domain': domain
-                            })
-                            excluded_keywords = [e.strip() for e in excluded if e.strip()]
+                            if source_name == 'pracuj_pl':
+                                scraper = PracujPlScraper({
+                                    'delay': delay,
+                                    'pracuj_pl_domain': domain
+                                })
+                            elif source_name == 'justjoin_it':
+                                scraper = JustJoinItScraper({
+                                    'delay': delay
+                                })
+                            else:
+                                logger.error(f'Unknown source: {source_name}')
+                                return
                             
                             if hasattr(scraper, 'scrape_page_by_page'):
                                 saved_count = scraper.scrape_page_by_page(keyword, max_pages, self.db, excluded_keywords)
-                                ui.notify(f'Scraping completed! Saved: {saved_count} new offers', type='positive')
+                                ui.notify(f'{source_name} completed! Saved: {saved_count} new offers', type='positive')
                             else:
-                                ui.notify('Scraper method not available', type='negative')
+                                ui.notify(f'{source_name}: Scraper method not available', type='negative')
                         except Exception as e:
-                            ui.notify(f'Error during scraping: {e}', type='negative')
-                            logger.error(f"Error during scraping: {e}", exc_info=True)
+                            ui.notify(f'Error during scraping {source_name}: {e}', type='negative')
+                            logger.error(f"Error during scraping {source_name}: {e}", exc_info=True)
                         finally:
                             self._refresh_offers_list()
                     
-                    thread = threading.Thread(target=run_scraper_thread, daemon=True)
-                    thread.start()
+                    # Start a thread for each selected source
+                    threads = []
+                    for source in selected_sources:
+                        thread = threading.Thread(target=run_scraper_for_source, args=(source,), daemon=True)
+                        thread.start()
+                        threads.append(thread)
+                        logger.info(f"Started scraper thread for {source}")
                     
-                    ui.notify('Scraper started! This may take a while...', type='info')
-                    logger.info("Started scraper in background thread")
+                    ui.notify(f'Started {len(selected_sources)} scraper(s)! This may take a while...', type='info')
                     config_dialog.close()
                 except Exception as e:
                     ui.notify(f'Error starting scraper: {e}', type='negative')
@@ -248,10 +296,64 @@ class MainWindow:
         
         tech_dialog.open()
 
+    def _open_keywords_filter_modal(self) -> None:
+        """Open modal to filter offers by keywords - required and excluded"""
+        with ui.dialog() as keywords_dialog, ui.card().classes('w-full max-w-2xl p-6 gap-4'):
+            ui.label('Filter by keywords').classes('text-xl font-bold')
+            
+            ui.label('Required keywords (comma-separated)').classes('text-sm font-semibold')
+            ui.label('Offers must contain at least one of these keywords').classes('text-xs text-gray-600 mb-2')
+            required_input = ui.textarea(
+                value=', '.join(self.required_keywords_filter),
+                placeholder='e.g. python, java, react'
+            ).classes('w-full').style('min-height: 80px')
+            
+            ui.label('Excluded keywords (comma-separated)').classes('text-sm font-semibold mt-4')
+            ui.label('Offers containing any of these keywords will be excluded').classes('text-xs text-gray-600 mb-2')
+            excluded_input = ui.textarea(
+                value=', '.join(self.excluded_keywords_filter),
+                placeholder='e.g. consultant, administrator'
+            ).classes('w-full').style('min-height: 80px')
+            
+            with ui.row().classes('w-full gap-2'):
+                def apply_filter():
+                    # Parse required keywords
+                    required_text = required_input.value.strip()
+                    if required_text:
+                        self.required_keywords_filter = {kw.strip().lower() for kw in required_text.split(',') if kw.strip()}
+                    else:
+                        self.required_keywords_filter = set()
+                    
+                    # Parse excluded keywords
+                    excluded_text = excluded_input.value.strip()
+                    if excluded_text:
+                        self.excluded_keywords_filter = {kw.strip().lower() for kw in excluded_text.split(',') if kw.strip()}
+                    else:
+                        self.excluded_keywords_filter = set()
+                    
+                    self._refresh_offers_list()
+                    keywords_dialog.close()
+                
+                def clear_filter():
+                    self.required_keywords_filter = set()
+                    self.excluded_keywords_filter = set()
+                    required_input.value = ''
+                    excluded_input.value = ''
+                    self._refresh_offers_list()
+                    keywords_dialog.close()
+                
+                ui.button('Apply', on_click=apply_filter, icon='check').classes('flex-1 bg-orange-500 text-white')
+                ui.button('Clear', on_click=clear_filter).classes('flex-1')
+                ui.button('Cancel', on_click=keywords_dialog.close).classes('flex-1')
+        
+        keywords_dialog.open()
+
     def _create_offers_panel(self) -> None:
         with ui.column().classes('w-full gap-4 p-4'):
             with ui.row().classes('w-full items-center justify-between'):
-                ui.label('Job offers').classes('text-xl font-bold')
+                with ui.row().classes('items-center gap-2'):
+                    ui.label('Job offers').classes('text-xl font-bold')
+                    self.offers_count_label = ui.label('(selected 0/0)').classes('text-sm text-gray-600')
                 
                 with ui.row().classes('gap-2'):
                     def select_all():
@@ -263,6 +365,10 @@ class MainWindow:
                         all_offers = self.db.get_offers(limit=10000)
                         for offer in all_offers:
                             self.selected_offers.discard(offer.get('id'))
+
+                        if self.offers_count_label:
+                            total_count = len(self.offers_data)
+                            self.offers_count_label.text = f'(selected 0/{total_count})'
                         self._refresh_offers_list()
                     
                     def open_selected():
@@ -280,14 +386,56 @@ class MainWindow:
                         
                         ui.notify(f'Opened {len(selected_urls)} offers in new tabs', type='info')
                     
-                    ui.button('Filter', on_click=self._open_tech_filter_modal, icon='filter_list').classes('bg-purple-500 text-white')
+                    ui.button('Tech Filter', on_click=self._open_tech_filter_modal, icon='filter_list').classes('bg-purple-500 text-white')
                     if self.selected_technologies:
                         ui.badge(str(len(self.selected_technologies)), color='purple').classes('ml-[-8px]')
+                    
+                    ui.button('Keywords Filter', on_click=self._open_keywords_filter_modal, icon='filter_alt').classes('bg-orange-500 text-white')
+                    filter_count = len(self.required_keywords_filter) + len(self.excluded_keywords_filter)
+                    if filter_count > 0:
+                        ui.badge(str(filter_count), color='orange').classes('ml-[-8px]')
+                    
+                    def open_sort_modal():
+                        with ui.dialog() as sort_dialog, ui.card().classes('w-full max-w-md p-6 gap-4'):
+                            ui.label('Sort by').classes('text-xl font-bold')
+                            
+                            sort_options = [
+                                ('scraped_at', 'Scraped Date'),
+                                ('valid_until', 'Valid Until'),
+                                ('title', 'Title'),
+                                ('company', 'Company')
+                            ]
+                            
+                            for sort_key, sort_label in sort_options:
+                                def create_sort_handler(key=sort_key):
+                                    def on_sort_click():
+                                        if self.sort_by == key:
+                                            self.sort_order = 'asc' if self.sort_order == 'desc' else 'desc'
+                                        else:
+                                            self.sort_by = key
+                                            self.sort_order = 'desc'
+                                        self._refresh_offers_list()
+                                        sort_dialog.close()
+                                    return on_sort_click
+                                
+                                is_selected = self.sort_by == sort_key
+                                sort_icon = ' (ASC)' if (is_selected and self.sort_order == 'asc') else (' (DESC)' if is_selected else '')
+                                
+                                with ui.row().classes('w-full items-center gap-2 p-2').style('cursor: pointer; border: 1px solid #ddd; border-radius: 4px;').on('click', create_sort_handler(sort_key)):
+                                    ui.label(f'{sort_label}{sort_icon}').classes('flex-grow')
+                                    if is_selected:
+                                        ui.icon('check', color='blue').classes('flex-shrink-0')
+                            
+                            ui.button('Cancel', on_click=sort_dialog.close).classes('w-full mt-4')
+                        
+                        sort_dialog.open()
+                    
+                    ui.button('Sort', on_click=open_sort_modal, icon='sort').classes('bg-blue-500 text-white')
                     
                     ui.button('Select All', on_click=select_all, icon='check_box')
                     ui.button('Deselect All', on_click=deselect_all, icon='check_box_outline_blank')
                     ui.button('Open Selected', on_click=open_selected, icon='open_in_new').classes('bg-green-500 text-white')
-                    ui.button('Refresh', on_click=self._refresh_offers_list, icon='refresh')
+                    ui.button('', on_click=self._refresh_offers_list, icon='refresh')
             
             ui.add_head_html('''
                 <style>
@@ -323,7 +471,79 @@ class MainWindow:
                         filtered_offers.append(offer)
             offers = filtered_offers
         
+        if self.required_keywords_filter:
+            filtered_offers = []
+            for offer in offers:
+                title_lower = offer.get('title', '').lower()
+                desc_lower = offer.get('description', '').lower()
+                company_lower = offer.get('company', '').lower()
+                techs_lower = offer.get('technologies', '').lower()
+                
+                text_to_search = f"{title_lower} {desc_lower} {company_lower} {techs_lower}"
+                
+                has_required = any(
+                    req_kw in text_to_search
+                    for req_kw in self.required_keywords_filter
+                )
+                
+                if has_required:
+                    filtered_offers.append(offer)
+            offers = filtered_offers
+        
+        if self.excluded_keywords_filter:
+            filtered_offers = []
+            for offer in offers:
+                title_lower = offer.get('title', '').lower()
+                desc_lower = offer.get('description', '').lower()
+                company_lower = offer.get('company', '').lower()
+                
+                should_exclude = False
+                for excluded in self.excluded_keywords_filter:
+                    if excluded in title_lower or excluded in desc_lower or excluded in company_lower:
+                        should_exclude = True
+                        break
+                
+                if not should_exclude:
+                    filtered_offers.append(offer)
+            offers = filtered_offers
+        
+        def get_sort_key(offer):
+            if self.sort_by == 'scraped_at':
+                scraped = offer.get('scraped_at')
+                if scraped:
+                    if isinstance(scraped, str):
+                        try:
+                            return datetime.strptime(scraped[:19], '%Y-%m-%d %H:%M:%S')
+                        except:
+                            return datetime.min
+                    return scraped if isinstance(scraped, datetime) else datetime.min
+                return datetime.min
+            elif self.sort_by == 'valid_until':
+                valid = offer.get('valid_until')
+                if valid:
+                    if isinstance(valid, str):
+                        try:
+                            return datetime.strptime(valid, '%Y-%m-%d').date()
+                        except:
+                            return date.min
+                    elif isinstance(valid, datetime):
+                        return valid.date()
+                    return valid if isinstance(valid, date) else date.min
+                return date.min
+            elif self.sort_by == 'title':
+                return offer.get('title', '').lower()
+            elif self.sort_by == 'company':
+                return offer.get('company', '').lower()
+            return ''
+        
+        offers.sort(key=get_sort_key, reverse=(self.sort_order == 'desc'))
+        
         self.offers_data = offers
+        
+        if self.offers_count_label:
+            selected_count = sum(1 for offer in offers if offer.get('id') in self.selected_offers)
+            total_count = len(offers)
+            self.offers_count_label.text = f'(selected {selected_count}/{total_count})'
         
         if not offers:
             with self.offers_container:
@@ -370,6 +590,11 @@ class MainWindow:
                         if cr[0]:
                             cr[0].style(f'cursor: pointer; background-color: {new_bg};')
                             cr[0].update()
+                        
+                        if self.offers_count_label:
+                            selected_count = sum(1 for offer in self.offers_data if offer.get('id') in self.selected_offers)
+                            total_count = len(self.offers_data)
+                            self.offers_count_label.text = f'(selected {selected_count}/{total_count})'
                     return on_checkbox_change
                 
                 _ = create_toggle_handler(offer_id, card_ref, checkbox_ref)
@@ -395,6 +620,11 @@ class MainWindow:
                         if chr[0]:
                             chr[0].value = new_value
                             chr[0].update()
+                        
+                        if self.offers_count_label:
+                            selected_count = sum(1 for offer in self.offers_data if offer.get('id') in self.selected_offers)
+                            total_count = len(self.offers_data)
+                            self.offers_count_label.text = f'(selected {selected_count}/{total_count})'
                     
                     card.on('click', card_click_handler)
                     
@@ -453,12 +683,3 @@ class MainWindow:
                                 if offer.get('valid_until'):
                                     valid_until_str = str(offer.get('valid_until'))
                                     ui.label(f'Valid until: {valid_until_str}').classes('text-red-600 font-medium')
-                        
-                        with ui.row().classes('gap-2 flex-shrink-0'):
-                            def open_link(e, url=offer.get('url', '')):
-                                e.stop_propagation()
-                                ui.open(url, new_tab=True)
-                            
-                            open_btn = ui.button('Open', icon='open_in_new').classes('bg-blue-500 text-white')
-                            open_btn.on('click', lambda e, u=offer.get('url', ''): open_link(e, u))
-        
