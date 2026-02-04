@@ -61,8 +61,3 @@ frontend/.env*.local
 *.pid.lock
 
 config.json
-
-# Empty folders created by Docker volumes on Windows
-/scrapers/
-/utils/
-/config/

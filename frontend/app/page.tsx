@@ -47,6 +47,18 @@ import { useDarkMode } from './ThemeRegistry'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+const getSourceDisplayName = (source: string): string => {
+  const sourceMap: Record<string, string> = {
+    'PracujPlScraper': 'pracuj.pl',
+    'JustJoinItScraper': 'justjoin.it',
+    'NoFluffJobsScraper': 'nofluffjobs',
+    'pracuj_pl': 'pracuj.pl',
+    'justjoin_it': 'justjoin.it',
+    'nofluffjobs': 'nofluffjobs',
+  }
+  return sourceMap[source] || source
+}
+
 interface JobOffer {
   id: number
   url: string
@@ -190,9 +202,16 @@ const OfferCard = memo(({ offer, isSelected, onToggle }: OfferCardProps) => {
                   </Typography>
                 )}
               </Box>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                Scrapowane: {new Date(offer.scraped_at).toLocaleDateString('pl-PL')}
-                {offer.valid_until && ` • Ważna do: ${new Date(offer.valid_until).toLocaleDateString('pl-PL')}`}
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>
+                  Scrapowane: {new Date(offer.scraped_at).toLocaleDateString('pl-PL')}
+                  {offer.valid_until && ` • Ważna do: ${new Date(offer.valid_until).toLocaleDateString('pl-PL')}`}
+                </span>
+                <Chip 
+                  label={getSourceDisplayName(offer.source)} 
+                  size="small" 
+                  sx={{ ml: 1, height: 20, fontSize: '0.7rem' }}
+                />
               </Typography>
             </Box>
           </Box>
@@ -470,7 +489,10 @@ export default function Home() {
               messages.push(`Dodano ${results.pracuj_pl} ofert z Pracuj.pl`)
             }
             if (results.justjoin_it !== undefined) {
-              messages.push(` i ${results.justjoin_it} ofert z JustJoin.it`)
+              messages.push(`, ${results.justjoin_it} ofert z JustJoin.it`)
+            }
+            if (results.nofluffjobs !== undefined) {
+              messages.push(` i ${results.nofluffjobs} ofert z NoFluffJobs`)
             }
             
             if (messages.length > 0) {
@@ -913,6 +935,20 @@ export default function Home() {
                 />
               }
               label="JustJoin.it"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={config.sources.includes('nofluffjobs')}
+                  onChange={(e) => {
+                    const sources = e.target.checked
+                      ? [...config.sources, 'nofluffjobs']
+                      : config.sources.filter((s) => s !== 'nofluffjobs')
+                    setConfig({ ...config, sources })
+                  }}
+                />
+              }
+              label="NoFluffJobs"
             />
           </Box>
           <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>

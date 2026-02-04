@@ -7,6 +7,7 @@ from app.schemas import Config
 
 from scrapers.pracuj_pl import PracujPlScraper
 from scrapers.justjoin_it import JustJoinItScraper
+from scrapers.nofluffjobs import NoFluffJobsScraper
 from app.database import SessionLocal
 from app.db_adapter import DatabaseAdapter
 
@@ -28,6 +29,8 @@ def run_scraper_for_source(source_name: str, config: dict, db_session, task_id: 
             scraper = PracujPlScraper(scraper_config)
         elif source_name == 'justjoin_it':
             scraper = JustJoinItScraper(scraper_config)
+        elif source_name == 'nofluffjobs':
+            scraper = NoFluffJobsScraper(scraper_config)
         else:
             logger.error(f"Unknown source: {source_name}")
             return 0
