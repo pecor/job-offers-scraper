@@ -40,7 +40,10 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import FileUploadIcon from '@mui/icons-material/FileUpload'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
+import DarkModeIcon from '@mui/icons-material/DarkMode'
+import LightModeIcon from '@mui/icons-material/LightMode'
 import axios from 'axios'
+import { useDarkMode } from './ThemeRegistry'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -129,8 +132,17 @@ const OfferCard = memo(({ offer, isSelected, onToggle }: OfferCardProps) => {
       <Card
         sx={{
           cursor: 'pointer',
-          backgroundColor: isSelected ? '#e3f2fd' : offer.seen ? '#f5f5f5' : 'white',
-          opacity: offer.seen ? 0.85 : 1,
+          backgroundColor: (theme) => 
+            isSelected 
+              ? theme.palette.mode === 'dark' 
+                ? 'rgba(100, 181, 246, 0.16)' 
+                : '#e3f2fd'
+              : offer.seen 
+              ? theme.palette.mode === 'dark'
+                ? 'rgba(0, 0, 0, 0.3)'
+                : '#f5f5f5'
+              : theme.palette.background.paper,
+          opacity: offer.seen ? 0.75 : 1,
           '&:hover': { boxShadow: 4 },
         }}
         onClick={handleClick}
@@ -179,7 +191,7 @@ const OfferCard = memo(({ offer, isSelected, onToggle }: OfferCardProps) => {
                 )}
               </Box>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                Scraped: {new Date(offer.scraped_at).toLocaleDateString('pl-PL')}
+                Scrapowane: {new Date(offer.scraped_at).toLocaleDateString('pl-PL')}
                 {offer.valid_until && ` • Ważna do: ${new Date(offer.valid_until).toLocaleDateString('pl-PL')}`}
               </Typography>
             </Box>
@@ -202,6 +214,7 @@ export default function Home() {
   const [exportAll, setExportAll] = useState(false)
   const [loading, setLoading] = useState(false)
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' as 'success' | 'error' | 'warning' | 'info' })
+  const { darkMode, setDarkMode } = useDarkMode()
   const [config, setConfig] = useState<Config>({
     search_keyword: 'junior',
     max_pages: 5,
@@ -667,6 +680,9 @@ export default function Home() {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
             Job Offers Scraper
           </Typography>
+          <IconButton color="inherit" onClick={() => setDarkMode(!darkMode)}>
+            {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
+          </IconButton>
         </Toolbar>
       </AppBar>
 
@@ -735,7 +751,7 @@ export default function Home() {
                   onChange={(e) => setShowSeen(e.target.checked)}
                 />
               }
-              label="Pokaż wszystkie ogłoszenia"
+              label="Wszystkie ogłoszenia"
             />
           </Box>
         </Box>
@@ -775,7 +791,7 @@ export default function Home() {
       <Box 
         component="footer" 
         sx={{ 
-          bgcolor: 'grey.100', 
+          bgcolor: 'background.paper', 
           py: 1.5, 
           mt: 'auto',
           position: 'sticky',
@@ -789,13 +805,33 @@ export default function Home() {
         <Container maxWidth="xl">
           <Typography variant="body2" color="text.secondary">
             Created by{' '}
-            <a href="https://github.com/pecor" target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'none' }}>
+            <Box
+              component="a"
+              href="https://github.com/pecor"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ 
+                color: 'primary.main', 
+                textDecoration: 'none',
+                '&:hover': { textDecoration: 'underline' }
+              }}
+            >
               pecor
-            </a>
+            </Box>
             {' • '}
-            <a href="https://github.com/pecor/job-offers-scraper" target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'none' }}>
+            <Box
+              component="a"
+              href="https://github.com/pecor/job-offers-scraper"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ 
+                color: 'primary.main', 
+                textDecoration: 'none',
+                '&:hover': { textDecoration: 'underline' }
+              }}
+            >
               GitHub Repository
-            </a>
+            </Box>
           </Typography>
         </Container>
       </Box>
