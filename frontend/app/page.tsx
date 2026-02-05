@@ -284,6 +284,7 @@ export default function Home() {
 
   const [localRequiredKeywords, setLocalRequiredKeywords] = useState('')
   const [localExcludedKeywords, setLocalExcludedKeywords] = useState('')
+  const [excludedKeywordsText, setExcludedKeywordsText] = useState('')
 
   useEffect(() => {
     if (filterDialogOpen) {
@@ -294,6 +295,10 @@ export default function Home() {
       setLocalExcludedKeywords(excludedKeywords)
     }
   }, [filterDialogOpen, selectedTechnologies, requiredKeywords, excludedKeywords])
+
+  useEffect(() => {
+    setExcludedKeywordsText(config.excluded_keywords.join(', '))
+  }, [config.excluded_keywords])
 
   const handleRequiredKeywordsChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setLocalRequiredKeywords(e.target.value)
@@ -458,7 +463,13 @@ export default function Home() {
 
   const handleSaveConfig = async () => {
     try {
-      await axios.put(`${API_URL}/api/config`, config)
+      const keywords = excludedKeywordsText
+        .split(',')
+        .map(k => k.trim())
+        .filter(Boolean)
+      const configToSave = { ...config, excluded_keywords: keywords }
+      await axios.put(`${API_URL}/api/config`, configToSave)
+      setConfig(configToSave)
       showSnackbar('Konfiguracja zapisana!', 'success')
       setConfigDialogOpen(false)
     } catch (error) {
@@ -468,8 +479,14 @@ export default function Home() {
 
   const handleRunScraper = async () => {
     try {
-      await handleSaveConfig()
-      const response = await axios.post(`${API_URL}/api/scrape/start`, config)
+      const keywords = excludedKeywordsText
+        .split(',')
+        .map(k => k.trim())
+        .filter(Boolean)
+      const configToRun = { ...config, excluded_keywords: keywords }
+      await axios.put(`${API_URL}/api/config`, configToRun)
+      setConfig(configToRun)
+      const response = await axios.post(`${API_URL}/api/scrape/start`, configToRun)
       const taskId = response.data.task_id
       showSnackbar('Scraper uruchomiony! To może chwilę potrwać...', 'info')
       setConfigDialogOpen(false)
@@ -899,12 +916,11 @@ export default function Home() {
           </FormControl>
           <TextField
             fullWidth
-            label="Wykluczone słowa kluczowe (jedno na linię)"
-            multiline
-            rows={4}
-            value={config.excluded_keywords.join('\n')}
-            onChange={(e) => setConfig({ ...config, excluded_keywords: e.target.value.split('\n').filter(Boolean) })}
+            label="Wykluczone słowa kluczowe (oddzielone przecinkami)"
+            value={excludedKeywordsText}
+            onChange={(e) => setExcludedKeywordsText(e.target.value)}
             margin="normal"
+            helperText="Wpisz słowa kluczowe oddzielone przecinkami, np: consultant, power bi, manager"
           />
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle2">Źródła:</Typography>
