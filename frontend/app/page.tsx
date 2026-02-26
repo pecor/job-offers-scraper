@@ -87,6 +87,8 @@ interface Config {
   pracuj_pl_domain: string
   excluded_keywords: string[]
   sources: string[]
+  search_in_description: boolean
+  dark_mode: boolean
 }
 
 interface OfferCardProps {
@@ -144,16 +146,16 @@ const OfferCard = memo(({ offer, isSelected, onToggle }: OfferCardProps) => {
       <Card
         sx={{
           cursor: 'pointer',
-          backgroundColor: (theme) => 
-            isSelected 
-              ? theme.palette.mode === 'dark' 
-                ? 'rgba(100, 181, 246, 0.16)' 
-                : '#e3f2fd'
-              : offer.seen 
+          backgroundColor: (theme) =>
+            isSelected
               ? theme.palette.mode === 'dark'
-                ? 'rgba(0, 0, 0, 0.3)'
-                : '#f5f5f5'
-              : theme.palette.background.paper,
+                ? 'rgba(100, 181, 246, 0.16)'
+                : '#e3f2fd'
+              : offer.seen
+                ? theme.palette.mode === 'dark'
+                  ? 'rgba(0, 0, 0, 0.3)'
+                  : '#f5f5f5'
+                : theme.palette.background.paper,
           opacity: offer.seen ? 0.75 : 1,
           '&:hover': { boxShadow: 4 },
         }}
@@ -207,9 +209,9 @@ const OfferCard = memo(({ offer, isSelected, onToggle }: OfferCardProps) => {
                   Scrapowane: {new Date(offer.scraped_at).toLocaleDateString('pl-PL')}
                   {offer.valid_until && ` • Ważna do: ${new Date(offer.valid_until).toLocaleDateString('pl-PL')}`}
                 </span>
-                <Chip 
-                  label={getSourceDisplayName(offer.source)} 
-                  size="small" 
+                <Chip
+                  label={getSourceDisplayName(offer.source)}
+                  size="small"
                   sx={{ ml: 1, height: 20, fontSize: '0.7rem' }}
                 />
               </Typography>
@@ -241,6 +243,8 @@ export default function Home() {
     pracuj_pl_domain: 'it',
     excluded_keywords: [],
     sources: ['pracuj_pl'],
+    search_in_description: false,
+    dark_mode: false,
   })
   const [selectedTechnologies, setSelectedTechnologies] = useState<Set<string>>(new Set())
   const [allTechnologies, setAllTechnologies] = useState<string[]>([])
@@ -299,6 +303,7 @@ export default function Home() {
   useEffect(() => {
     setExcludedKeywordsText(config.excluded_keywords.join(', '))
   }, [config.excluded_keywords])
+
 
   const handleRequiredKeywordsChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setLocalRequiredKeywords(e.target.value)
@@ -396,7 +401,7 @@ export default function Home() {
         sort_order: sortOrder,
         show_seen: showSeen,
       }
-      
+
       // Add filter parameters
       if (selectedTechnologies.size > 0) {
         params.selected_technologies = Array.from(selectedTechnologies).join(',')
@@ -407,14 +412,14 @@ export default function Home() {
       if (excludedKeywords) {
         params.excluded_keywords = excludedKeywords
       }
-      
+
       const response = await axios.get(`${API_URL}/api/offers`, {
         params,
         timeout: 10000,
       })
-      
+
       const newOffers = response.data
-      
+
       if (reset) {
         setOffers(newOffers)
         setOffset(newOffers.length)
@@ -488,20 +493,21 @@ export default function Home() {
       setConfig(configToRun)
       const response = await axios.post(`${API_URL}/api/scrape/start`, configToRun)
       const taskId = response.data.task_id
-      showSnackbar('Scraper uruchomiony! To może chwilę potrwać...', 'info')
+      showSnackbar(`Scraper uruchomiony dla słów: ${configToRun.search_keyword}. To może chwilę potrwać...`, 'info')
       setConfigDialogOpen(false)
-      
+
       // Poll for scraping results
       const checkStatus = async () => {
         try {
           const statusResponse = await axios.get(`${API_URL}/api/scrape/status/${taskId}`)
           const status = statusResponse.data
-          
+
           if (status.status === 'completed') {
             // Build result message
             const results = status.results
             const messages: string[] = []
-            
+            const keywordsInfo = status.keywords ? ` (słowa: ${status.keywords.join(', ')})` : ''
+
             if (results.pracuj_pl !== undefined) {
               messages.push(`Dodano ${results.pracuj_pl} ofert z Pracuj.pl`)
             }
@@ -511,13 +517,13 @@ export default function Home() {
             if (results.nofluffjobs !== undefined) {
               messages.push(` i ${results.nofluffjobs} ofert z NoFluffJobs`)
             }
-            
+
             if (messages.length > 0) {
-              showSnackbar(messages.join(''), 'success')
+              showSnackbar(messages.join('') + keywordsInfo, 'success')
             } else {
-              showSnackbar('Scraping zakończony', 'success')
+              showSnackbar('Scraping zakończony' + keywordsInfo, 'success')
             }
-            
+
             // Refresh offers
             loadOffers(true)
           } else {
@@ -532,7 +538,7 @@ export default function Home() {
           }, 5000)
         }
       }
-      
+
       // Start checking status after 3 seconds
       setTimeout(checkStatus, 3000)
     } catch (error) {
@@ -561,7 +567,7 @@ export default function Home() {
   }, [])
 
   // Memoize rendered offers to prevent unnecessary re-renders
-  const renderedOffers = useMemo(() => 
+  const renderedOffers = useMemo(() =>
     offers.map((offer) => (
       <OfferCard
         key={offer.id}
@@ -590,13 +596,13 @@ export default function Home() {
       const response = await axios.post(`${API_URL}/api/offers/mark-seen`, {
         offer_ids: offerIds,
       })
-      
-      setOffers(prevOffers => 
-        prevOffers.map(offer => 
+
+      setOffers(prevOffers =>
+        prevOffers.map(offer =>
           offerIds.includes(offer.id) ? { ...offer, seen: true } : offer
         )
       )
-      
+
       showSnackbar(`Oznaczono ${response.data.updated_count} ofert jako wyświetlone`, 'success')
       setSelectedOffers(new Set())
     } catch (error) {
@@ -619,7 +625,7 @@ export default function Home() {
   const exportOffers = async (format: 'json' | 'csv', exportType: 'selected' | 'filtered' | 'all') => {
     try {
       let params: any = {}
-      
+
       if (exportType === 'selected') {
         // Export selected offers
         if (selectedOffers.size === 0) {
@@ -642,31 +648,31 @@ export default function Home() {
           excluded_keywords: excludedKeywords || undefined,
         }
       }
-      
+
       const response = await axios.post(`${API_URL}/api/offers/export/${format}`, params, {
         responseType: 'blob',
       })
-      
+
       // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
-      const filename = exportType === 'selected' 
+      const filename = exportType === 'selected'
         ? `job_offers_selected.${format}`
         : exportType === 'all'
-        ? `job_offers_all.${format}`
-        : `job_offers_filtered.${format}`
+          ? `job_offers_all.${format}`
+          : `job_offers_filtered.${format}`
       link.setAttribute('download', filename)
       document.body.appendChild(link)
       link.click()
       link.remove()
       window.URL.revokeObjectURL(url)
-      
-      const count = exportType === 'selected' 
-        ? selectedOffers.size 
+
+      const count = exportType === 'selected'
+        ? selectedOffers.size
         : exportType === 'all'
-        ? 'wszystkie'
-        : 'filtrowane'
+          ? 'wszystkie'
+          : 'filtrowane'
       showSnackbar(`Eksport zakończony pomyślnie (${count} ofert)`, 'success')
       setExportImportDialogOpen(false)
     } catch (error) {
@@ -679,13 +685,13 @@ export default function Home() {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      
+
       const response = await axios.post(`${API_URL}/api/offers/import/${format}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       })
-      
+
       showSnackbar(response.data.message, 'success')
       setExportImportDialogOpen(false)
       loadOffers(true)
@@ -726,17 +732,17 @@ export default function Home() {
       </AppBar>
 
       <Box sx={{ position: 'sticky', top: 64, zIndex: 1000, bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider', py: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center'}}>
-              <Typography variant="body2" color="text.secondary">
-                wybrane: {selectedOffers.size}/{offers.length}
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button onClick={selectAll} size="small">Zaznacz wszystkie</Button>
-              <Button onClick={deselectAll} size="small">Odznacz wszystkie</Button>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="body2" color="text.secondary">
+              wybrane: {selectedOffers.size}/{offers.length}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button onClick={selectAll} size="small">Zaznacz wszystkie</Button>
+            <Button onClick={deselectAll} size="small">Odznacz wszystkie</Button>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
             <Badge badgeContent={selectedTechnologies.size + (requiredKeywords + excludedKeywords).split(',').filter(Boolean).length} color="secondary">
               <Button
                 variant="contained"
@@ -782,7 +788,7 @@ export default function Home() {
               Eksport/Import
             </Button>
           </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center'}}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <FormControlLabel
               control={
                 <Checkbox
@@ -827,11 +833,11 @@ export default function Home() {
         )}
       </Container>
 
-      <Box 
-        component="footer" 
-        sx={{ 
-          bgcolor: 'background.paper', 
-          py: 1.5, 
+      <Box
+        component="footer"
+        sx={{
+          bgcolor: 'background.paper',
+          py: 1.5,
           mt: 'auto',
           position: 'sticky',
           bottom: 0,
@@ -849,8 +855,8 @@ export default function Home() {
               href="https://github.com/pecor"
               target="_blank"
               rel="noopener noreferrer"
-              sx={{ 
-                color: 'primary.main', 
+              sx={{
+                color: 'primary.main',
                 textDecoration: 'none',
                 '&:hover': { textDecoration: 'underline' }
               }}
@@ -863,8 +869,8 @@ export default function Home() {
               href="https://github.com/pecor/job-offers-scraper"
               target="_blank"
               rel="noopener noreferrer"
-              sx={{ 
-                color: 'primary.main', 
+              sx={{
+                color: 'primary.main',
                 textDecoration: 'none',
                 '&:hover': { textDecoration: 'underline' }
               }}
@@ -881,10 +887,11 @@ export default function Home() {
         <DialogContent>
           <TextField
             fullWidth
-            label="Słowo kluczowe"
+            label="Słowa kluczowe (oddzielone przecinkami)"
             value={config.search_keyword}
             onChange={(e) => setConfig({ ...config, search_keyword: e.target.value })}
             margin="normal"
+            helperText="Wpisz słowa kluczowe oddzielone przecinkami, np: junior, react native, python. Każde słowo będzie wyszukane osobno."
           />
           <TextField
             fullWidth
@@ -914,14 +921,26 @@ export default function Home() {
               <MenuItem value="www">Wszystkie (www.pracuj.pl)</MenuItem>
             </Select>
           </FormControl>
-          <TextField
-            fullWidth
-            label="Wykluczone słowa kluczowe (oddzielone przecinkami)"
-            value={excludedKeywordsText}
-            onChange={(e) => setExcludedKeywordsText(e.target.value)}
-            margin="normal"
-            helperText="Wpisz słowa kluczowe oddzielone przecinkami, np: consultant, power bi, manager"
-          />
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+            <TextField
+              fullWidth
+              label="Wykluczone słowa kluczowe (oddzielone przecinkami)"
+              value={excludedKeywordsText}
+              onChange={(e) => setExcludedKeywordsText(e.target.value)}
+              margin="normal"
+              helperText="Wpisz słowa kluczowe oddzielone przecinkami, np: consultant, power bi, manager"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={config.search_in_description}
+                  onChange={(e) => setConfig({ ...config, search_in_description: e.target.checked })}
+                />
+              }
+              label="Szukaj też w opisie"
+              sx={{ mt: 3, whiteSpace: 'nowrap' }}
+            />
+          </Box>
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle2">Źródła:</Typography>
             <FormControlLabel
@@ -991,15 +1010,15 @@ export default function Home() {
       </Dialog>
 
       {/* Unified Filter Dialog */}
-      <Dialog 
-        open={filterDialogOpen} 
+      <Dialog
+        open={filterDialogOpen}
         onClose={() => {
           setTempSelectedTechnologies(new Set(selectedTechnologies))
           setLocalRequiredKeywords(requiredKeywords)
           setLocalExcludedKeywords(excludedKeywords)
           setFilterDialogOpen(false)
-        }} 
-        maxWidth="md" 
+        }}
+        maxWidth="md"
         fullWidth
       >
         <DialogTitle>Filtry</DialogTitle>
@@ -1092,7 +1111,7 @@ export default function Home() {
           >
             Wyczyść wszystko
           </Button>
-          <Button 
+          <Button
             onClick={() => {
               setTempSelectedTechnologies(new Set(selectedTechnologies))
               setLocalRequiredKeywords(requiredKeywords)
@@ -1102,14 +1121,14 @@ export default function Home() {
           >
             Anuluj
           </Button>
-          <Button 
-            onClick={() => { 
+          <Button
+            onClick={() => {
               setSelectedTechnologies(new Set(tempSelectedTechnologies))
               setRequiredKeywords(localRequiredKeywords)
               setExcludedKeywords(localExcludedKeywords)
               setFilterDialogOpen(false)
               loadOffers(true)
-            }} 
+            }}
             variant="contained"
           >
             Zastosuj
@@ -1140,7 +1159,7 @@ export default function Home() {
                 </IconButton>
               </Tooltip>
             </Box>
-            
+
             <FormControlLabel
               control={
                 <Checkbox
@@ -1151,17 +1170,17 @@ export default function Home() {
               label="Wszystkie oferty z bazy danych"
               sx={{ mb: 2 }}
             />
-            
+
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                {exportAll 
+                {exportAll
                   ? 'Eksportuj wszystkie oferty z bazy danych (ignoruje filtry)'
                   : selectedOffers.size > 0
-                  ? `Eksportuj zaznaczone oferty (${selectedOffers.size}) lub pasujące do filtrów`
-                  : 'Eksportuj oferty pasujące do aktualnych filtrów'}
+                    ? `Eksportuj zaznaczone oferty (${selectedOffers.size}) lub pasujące do filtrów`
+                    : 'Eksportuj oferty pasujące do aktualnych filtrów'}
               </Typography>
             </Box>
-            
+
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Button
                 variant="outlined"
@@ -1182,20 +1201,20 @@ export default function Home() {
                 Eksportuj CSV
               </Button>
             </Box>
-            
+
             {selectedOffers.size > 0 && !exportAll && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
                 Zaznaczono {selectedOffers.size} ofert - zostaną wyeksportowane zaznaczone oferty
               </Typography>
             )}
-            
+
             {selectedOffers.size > 0 && !exportAll && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
                 Zaznaczono {selectedOffers.size} ofert - zostaną wyeksportowane zaznaczone oferty
               </Typography>
             )}
           </Box>
-          
+
           <Box sx={{ pt: 2, borderTop: 1, borderColor: 'divider' }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Import</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>

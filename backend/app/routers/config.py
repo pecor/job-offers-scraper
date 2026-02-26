@@ -22,6 +22,8 @@ DEFAULT_CONFIG = {
     "excluded_keywords": [],
     "schedule": "daily",
     "sources": ["pracuj_pl"],
+    "search_in_description": False,
+    "dark_mode": False,
 }
 
 

@@ -42,6 +42,8 @@ class ConfigBase(BaseModel):
     excluded_keywords: list[str] = []
     schedule: str = "daily"
     sources: list[str] = ["pracuj_pl"]
+    search_in_description: bool = False
+    dark_mode: bool = False
 
 
 class Config(ConfigBase):

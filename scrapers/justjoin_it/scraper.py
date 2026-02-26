@@ -207,7 +207,7 @@ class JustJoinItScraper(BaseScraper):
             'valid_until': valid_until,
         }
 
-    def scrape_page_by_page(self, keyword: str, max_pages: int, db_manager=None, excluded_keywords: list[str] | None = None) -> int:
+    def scrape_page_by_page(self, keyword: str, max_pages: int, db_manager=None, excluded_keywords: list[str] | None = None, search_in_description: bool = False) -> int:
         """
         Scrape offers page by page using API, parsing and saving each offer immediately.
 
@@ -216,6 +216,7 @@ class JustJoinItScraper(BaseScraper):
             max_pages: Maximum number of pages to scrape
             db_manager: Database manager instance for saving offers
             excluded_keywords: List of keywords to exclude
+            search_in_description: If True, also search excluded keywords in description
 
         Returns:
             Number of saved offers
@@ -261,7 +262,7 @@ class JustJoinItScraper(BaseScraper):
                     
                     should_exclude = False
                     for excluded in excluded_keywords:
-                        if excluded.lower() in title_lower or excluded.lower() in desc_lower:
+                        if excluded.lower() in title_lower or (search_in_description and excluded.lower() in desc_lower):
                             should_exclude = True
                             logger.debug(f"Excluding offer: {offer.get('title')} (matched: {excluded})")
                             break

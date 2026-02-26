@@ -17,7 +17,7 @@ router = APIRouter()
 scraping_results: dict[str, Dict] = {}
 
 
-def run_scraper_for_source(source_name: str, config: dict, db_session, task_id: str):
+def run_scraper_for_source(source_name: str, config: dict, db_session, task_id: str, search_in_description: bool = False):
     saved_count = 0
     try:
         scraper_config = {
@@ -45,7 +45,8 @@ def run_scraper_for_source(source_name: str, config: dict, db_session, task_id: 
         if hasattr(scraper, 'scrape_page_by_page'):
             # Use page-by-page scraping
             saved_count = scraper.scrape_page_by_page(
-                keyword, max_pages, db_adapter, excluded_keywords
+                keyword, max_pages, db_adapter, excluded_keywords,
+                search_in_description=search_in_description
             )
             logger.info(f"{source_name} completed! Saved: {saved_count} new offers")
         else:
@@ -61,7 +62,7 @@ def run_scraper_for_source(source_name: str, config: dict, db_session, task_id: 
 
                 should_exclude = False
                 for excluded in excluded_keywords:
-                    if excluded.lower() in title_lower or excluded.lower() in desc_lower:
+                    if excluded.lower() in title_lower or (search_in_description and excluded.lower() in desc_lower):
                         should_exclude = True
                         logger.debug(f"Excluding offer: {offer.get('title')} (matched: {excluded})")
                         break
@@ -95,32 +96,54 @@ def run_scrapers_task(config: Config, task_id: str):
         logger.error("No sources configured")
         return
 
-    logger.info(f"Starting scrapers for keyword: {config.search_keyword}, sources: {sources}")
+    # Split keywords by comma
+    keywords = [k.strip() for k in config.search_keyword.split(',') if k.strip()]
+    if not keywords:
+        logger.error("No keywords configured")
+        return
+
+    logger.info(f"Starting scrapers for keywords: {keywords}, sources: {sources}")
 
     # Initialize results
     scraping_results[task_id] = {
         'status': 'running',
         'started_at': datetime.now().isoformat(),
-        'results': {source: 0 for source in sources}
+        'results': {source: 0 for source in sources},
+        'keywords': keywords,
+        'current_keyword': keywords[0],
+        'keywords_completed': 0,
     }
 
     config_dict = config.model_dump()
-    
-    # Run each scraper in a separate thread/process
-    threads = []
-    for source in sources:
-        db_session = SessionLocal()
-        thread = threading.Thread(
-            target=run_scraper_for_source,
-            args=(source, config_dict, db_session, task_id),
-            daemon=False
-        )
-        thread.start()
-        threads.append(thread)
-        logger.info(f"Started scraper thread for {source}")
 
-    for thread in threads:
-        thread.join()
+    # For each keyword, run all sources in parallel
+    for keyword in keywords:
+        scraping_results[task_id]['current_keyword'] = keyword
+        logger.info(f"Scraping keyword: '{keyword}'")
+
+        # Override search_keyword in config_dict for this iteration
+        config_dict['search_keyword'] = keyword
+
+        threads = []
+        for source in sources:
+            db_session = SessionLocal()
+            thread = threading.Thread(
+                target=run_scraper_for_source,
+                args=(source, config_dict, db_session, task_id),
+                daemon=False,
+                kwargs={
+                    'search_in_description': config.search_in_description
+                }
+            )
+            thread.start()
+            threads.append(thread)
+            logger.info(f"Started scraper thread for {source} (keyword: '{keyword}')")
+
+        for thread in threads:
+            thread.join()
+
+        scraping_results[task_id]['keywords_completed'] = scraping_results[task_id].get('keywords_completed', 0) + 1
+        logger.info(f"Completed keyword: '{keyword}'")
 
     # Mark as completed
     scraping_results[task_id]['status'] = 'completed'
