@@ -42,8 +42,10 @@ import FileUploadIcon from '@mui/icons-material/FileUpload'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import LightModeIcon from '@mui/icons-material/LightMode'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import axios from 'axios'
 import { useDarkMode } from './ThemeRegistry'
+import AiDialog from './ai-dialog'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -95,6 +97,7 @@ interface OfferCardProps {
   offer: JobOffer
   isSelected: boolean
   onToggle: (id: number) => void
+  onGenerate: (offer: JobOffer) => void
 }
 
 interface TechListItemProps {
@@ -127,10 +130,15 @@ const TechListItem = memo(({ tech, isSelected, onToggle }: TechListItemProps) =>
 
 TechListItem.displayName = 'TechListItem'
 
-const OfferCard = memo(({ offer, isSelected, onToggle }: OfferCardProps) => {
+const OfferCard = memo(({ offer, isSelected, onToggle, onGenerate }: OfferCardProps) => {
   const handleClick = useCallback(() => {
     onToggle(offer.id)
   }, [offer.id, onToggle])
+
+  const handleGenerateClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onGenerate(offer)
+  }, [offer, onGenerate])
 
   const handleCheckboxChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation()
@@ -209,11 +217,23 @@ const OfferCard = memo(({ offer, isSelected, onToggle }: OfferCardProps) => {
                   Scrapowane: {new Date(offer.scraped_at).toLocaleDateString('pl-PL')}
                   {offer.valid_until && ` • Ważna do: ${new Date(offer.valid_until).toLocaleDateString('pl-PL')}`}
                 </span>
-                <Chip
-                  label={getSourceDisplayName(offer.source)}
-                  size="small"
-                  sx={{ ml: 1, height: 20, fontSize: '0.7rem' }}
-                />
+                <span>
+                  <Tooltip title="Wygeneruj wiadomość aplikacyjną (AI)">
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={handleGenerateClick}
+                      sx={{ ml: 0.5 }}
+                    >
+                      <AutoAwesomeIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Chip
+                    label={getSourceDisplayName(offer.source)}
+                    size="small"
+                    sx={{ ml: 1, height: 20, fontSize: '0.7rem' }}
+                  />
+                </span>
               </Typography>
             </Box>
           </Box>
@@ -262,6 +282,13 @@ export default function Home() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [showSeen, setShowSeen] = useState(false)
   const observerTarget = useRef<HTMLDivElement>(null)
+  const [aiDialogOpen, setAiDialogOpen] = useState(false)
+  const [aiOffer, setAiOffer] = useState<JobOffer | null>(null)
+
+  const openAiDialog = useCallback((offer: JobOffer) => {
+    setAiOffer(offer)
+    setAiDialogOpen(true)
+  }, [])
 
   const JOB_OFFERS_LIMIT = 100
 
@@ -574,8 +601,9 @@ export default function Home() {
         offer={offer}
         isSelected={selectedOffers.has(offer.id)}
         onToggle={toggleOfferSelection}
+        onGenerate={openAiDialog}
       />
-    )), [offers, selectedOffers, toggleOfferSelection]
+    )), [offers, selectedOffers, toggleOfferSelection, openAiDialog]
   )
 
   const openSelected = () => {
@@ -880,6 +908,14 @@ export default function Home() {
           </Typography>
         </Container>
       </Box>
+
+      {/* AI Dialog */}
+      <AiDialog
+        open={aiDialogOpen}
+        offer={aiOffer}
+        onClose={() => setAiDialogOpen(false)}
+        onSnackbar={showSnackbar}
+      />
 
       {/* Config Dialog */}
       <Dialog open={configDialogOpen} onClose={() => setConfigDialogOpen(false)} maxWidth="md" fullWidth>

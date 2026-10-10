@@ -1,13 +1,15 @@
 # API configuration
-API_BASE_URL = "https://api.justjoin.it/v2/user-panel/offers/by-cursor"
+# Listing and details go through the justjoin.it reverse proxy (api.justjoin.it
+# rejects direct requests with 503). Verified 2026-10.
+API_BASE_URL = "https://justjoin.it/api/candidate-api/offers"
 OFFER_BASE_URL = "https://justjoin.it/job-offer"
 
 # Default API parameters
 DEFAULT_PARAMS = {
-    'cityRadiusKm': 30, # not really important
+    'cityRadiusKm': 30,  # not really important
     'currency': 'pln',
     'from': 0,
     'itemsCount': 100,
-    'orderBy': 'DESC',
-    'sortBy': 'newest',
+    'orderBy': 'Descending',
+    'sortBy': 'Newest',
 }
