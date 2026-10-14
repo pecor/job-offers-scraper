@@ -21,8 +21,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "o pracę oraz CV kandydata napisz spersonalizowaną wiadomość aplikacyjną do rekrutera. "
     "Wiadomość ma być konkretna, oparta na realnych punktach wspólnych między CV a ogłoszeniem, "
     "bez wymyślania faktów. Nie używaj gotowych szablonów ani pustych frazesów. "
-    "Zwróć wyłącznie treść wiadomości — bez żadnych komentarzy, nagłówków ani przypisów. "
-    "Odpowiadaj po polsku, chyba że ogłoszenie jest w innym języku — wtedy w języku ogłoszenia."
+    "Zwróć wyłącznie treść wiadomości - bez żadnych komentarzy, nagłówków ani przypisów. "
+    "Odpowiadaj po polsku, chyba że ogłoszenie jest w innym języku - wtedy w języku ogłoszenia."
 )
 
 # Replacements removing typical AI-writing tells from generated messages.

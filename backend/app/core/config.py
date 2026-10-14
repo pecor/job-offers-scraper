@@ -13,11 +13,14 @@ class Settings(BaseSettings):
     API_PORT: int
     CORS_ORIGINS: str
 
-    # LLM (OpenAI-compatible API; default: Z.ai GLM Coding Plan endpoint —
+    # LLM (OpenAI-compatible API; default: Z.ai GLM Coding Plan endpoint-
     # use https://api.z.ai/api/paas/v4 for standard Z.ai API keys)
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = "https://api.z.ai/api/coding/paas/v4"
     LLM_MODEL: str = "glm-5.3-flash"
+
+    # Google Places API (geocoding for distance filtering)
+    GOOGLE_PLACES_API_KEY: str = ""
 
     @property
     def database_url(self) -> str:

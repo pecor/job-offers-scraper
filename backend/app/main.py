@@ -12,7 +12,7 @@ else:
     project_root = Path(__file__).parent.parent.parent.parent
     sys.path.insert(0, str(project_root))
 
-from app.routers import offers, config, scrape, technologies, ai, cv
+from app.routers import offers, config, scrape, technologies, ai, cv, geo
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +38,7 @@ app.include_router(scrape.router, prefix="/api", tags=["scrape"])
 app.include_router(technologies.router, prefix="/api", tags=["technologies"])
 app.include_router(ai.router, prefix="/api", tags=["ai"])
 app.include_router(cv.router, prefix="/api", tags=["cv"])
+app.include_router(geo.router, prefix="/api", tags=["geo"])
 
 
 @app.get("/")

@@ -78,6 +78,10 @@ interface JobOffer {
   employment_type: string | null
   valid_until: string | null
   source: string
+  city_norm: string | null
+  lat: number | null
+  lng: number | null
+  distance_km: number | null
   scraped_at: string
   created_at: string
 }
@@ -91,6 +95,9 @@ interface Config {
   sources: string[]
   search_in_description: boolean
   dark_mode: boolean
+  home_address?: string
+  home_lat?: number | null
+  home_lng?: number | null
 }
 
 interface OfferCardProps {
@@ -211,6 +218,15 @@ const OfferCard = memo(({ offer, isSelected, onToggle, onGenerate }: OfferCardPr
                     Umowa: {offer.contract_type}
                   </Typography>
                 )}
+                {offer.distance_km != null && (
+                  <Chip
+                    label={`${offer.distance_km} km`}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    sx={{ height: 20, fontSize: '0.7rem' }}
+                  />
+                )}
               </Box>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>
@@ -272,6 +288,13 @@ export default function Home() {
   const [techSearchTermDebounced, setTechSearchTermDebounced] = useState('')
   const [requiredKeywords, setRequiredKeywords] = useState<string>('')
   const [excludedKeywords, setExcludedKeywords] = useState<string>('')
+  const [maxDistance, setMaxDistance] = useState<string>('')
+  const [tempMaxDistance, setTempMaxDistance] = useState<string>('')
+  const [centerCity, setCenterCity] = useState<string>('home')
+  const [tempCenterCity, setTempCenterCity] = useState<string>('home')
+  const [citiesList, setCitiesList] = useState<{ city: string; count: number }[]>([])
+  const [homeAddress, setHomeAddress] = useState<string>('')
+  const [homeSaving, setHomeSaving] = useState(false)
   const [tempSelectedTechnologies, setTempSelectedTechnologies] = useState<Set<string>>(new Set())
   const [tempRequiredKeywords, setTempRequiredKeywords] = useState<string>('')
   const [tempExcludedKeywords, setTempExcludedKeywords] = useState<string>('')
@@ -322,10 +345,16 @@ export default function Home() {
       setTempSelectedTechnologies(new Set(selectedTechnologies))
       setTempRequiredKeywords(requiredKeywords)
       setTempExcludedKeywords(excludedKeywords)
+      setTempMaxDistance(maxDistance)
+      setTempCenterCity(centerCity)
       setLocalRequiredKeywords(requiredKeywords)
       setLocalExcludedKeywords(excludedKeywords)
+      axios
+        .get(`${API_URL}/api/geo/cities`)
+        .then((res) => setCitiesList(res.data))
+        .catch(() => setCitiesList([]))
     }
-  }, [filterDialogOpen, selectedTechnologies, requiredKeywords, excludedKeywords])
+  }, [filterDialogOpen, selectedTechnologies, requiredKeywords, excludedKeywords, maxDistance, centerCity])
 
   useEffect(() => {
     setExcludedKeywordsText(config.excluded_keywords.join(', '))
@@ -365,6 +394,7 @@ export default function Home() {
     try {
       const response = await axios.get(`${API_URL}/api/config`)
       setConfig(response.data)
+      if (response.data.home_address) setHomeAddress(response.data.home_address)
     } catch (error) {
       console.error('Error loading config:', error)
       // Keep default config if API fails
@@ -439,6 +469,12 @@ export default function Home() {
       if (excludedKeywords) {
         params.excluded_keywords = excludedKeywords
       }
+      if (maxDistance && parseFloat(maxDistance) >= 0) {
+        params.max_distance = parseFloat(maxDistance)
+      }
+      if (centerCity && centerCity !== 'home') {
+        params.city_center = centerCity
+      }
 
       const response = await axios.get(`${API_URL}/api/offers`, {
         params,
@@ -463,7 +499,7 @@ export default function Home() {
       setLoading(false)
       setLoadingMore(false)
     }
-  }, [offset, sortBy, sortOrder, showSeen, selectedTechnologies, requiredKeywords, excludedKeywords, showSnackbar])
+  }, [offset, sortBy, sortOrder, showSeen, selectedTechnologies, requiredKeywords, excludedKeywords, maxDistance, centerCity, showSnackbar])
 
   useEffect(() => {
     loadOffers(true)
@@ -492,6 +528,23 @@ export default function Home() {
     }
   }, [hasMore, loadingMore, loading, loadOffers])
 
+
+  const saveHomeAddress = async () => {
+    setHomeSaving(true)
+    try {
+      const response = await axios.post(`${API_URL}/api/geo/home`, { address: homeAddress })
+      showSnackbar(
+        `Lokalizacja zapisana: ${response.data.home_address}. Odległości są przeliczane w tle...`,
+        'success'
+      )
+    } catch (error: unknown) {
+      const detail =
+        (axios.isAxiosError(error) && error.response?.data?.detail) || 'Nieznany błąd'
+      showSnackbar(`Błąd zapisu lokalizacji: ${detail}`, 'error')
+    } finally {
+      setHomeSaving(false)
+    }
+  }
 
   const handleSaveConfig = async () => {
     try {
@@ -1023,6 +1076,27 @@ export default function Home() {
             />
           </Box>
           <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+            <Typography variant="subtitle2" sx={{ mb: 2 }}>Lokalizacja (filtr odległości):</Typography>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+              <TextField
+                fullWidth
+                label="Twój adres / miasto"
+                value={homeAddress}
+                onChange={(e) => setHomeAddress(e.target.value)}
+                margin="normal"
+                helperText="Używane do liczenia odległości ofert. Geokodowane raz (Google Places)."
+              />
+              <Button
+                variant="outlined"
+                onClick={saveHomeAddress}
+                disabled={homeSaving || !homeAddress.trim()}
+                sx={{ mt: 3, whiteSpace: 'nowrap' }}
+              >
+                {homeSaving ? 'Zapisywanie…' : 'Zapisz'}
+              </Button>
+            </Box>
+          </Box>
+          <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
             <Typography variant="subtitle2" sx={{ mb: 2 }}>Zarządzanie ofertami:</Typography>
             <Button
               variant="outlined"
@@ -1136,6 +1210,42 @@ export default function Home() {
               helperText="Oferty zawierające którekolwiek z tych słów będą wykluczone"
             />
           </Box>
+
+          {/* Location & Distance Filter */}
+          <Box sx={{ pt: 2, borderTop: 1, borderColor: 'divider' }}>
+            <Typography variant="h6" sx={{ mb: 1 }}>Lokalizacja i odległość</Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <FormControl sx={{ minWidth: 200, flexGrow: 1 }} margin="normal">
+                <InputLabel>Miasto (centrum)</InputLabel>
+                <Select
+                  value={tempCenterCity}
+                  label="Miasto (centrum)"
+                  onChange={(e) => setTempCenterCity(e.target.value)}
+                >
+                  <MenuItem value="home">
+                    {config.home_lat != null
+                      ? `Moja lokalizacja (${homeAddress || 'ustawiona'})`
+                      : 'Moja lokalizacja (nieustawiona)'}
+                  </MenuItem>
+                  {citiesList.map((c) => (
+                    <MenuItem key={c.city} value={c.city}>
+                      {c.city} ({c.count})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                sx={{ minWidth: 140 }}
+                label="Maks. odległość (km)"
+                type="number"
+                value={tempMaxDistance}
+                onChange={(e) => setTempMaxDistance(e.target.value)}
+                margin="normal"
+                inputProps={{ min: 0 }}
+                helperText="Puste = bez limitu"
+              />
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button
@@ -1143,6 +1253,8 @@ export default function Home() {
               setTempSelectedTechnologies(new Set())
               setLocalRequiredKeywords('')
               setLocalExcludedKeywords('')
+              setTempMaxDistance('')
+              setTempCenterCity('home')
             }}
           >
             Wyczyść wszystko
@@ -1152,6 +1264,8 @@ export default function Home() {
               setTempSelectedTechnologies(new Set(selectedTechnologies))
               setLocalRequiredKeywords(requiredKeywords)
               setLocalExcludedKeywords(excludedKeywords)
+              setTempMaxDistance(maxDistance)
+              setTempCenterCity(centerCity)
               setFilterDialogOpen(false)
             }}
           >
@@ -1162,6 +1276,8 @@ export default function Home() {
               setSelectedTechnologies(new Set(tempSelectedTechnologies))
               setRequiredKeywords(localRequiredKeywords)
               setExcludedKeywords(localExcludedKeywords)
+              setMaxDistance(tempMaxDistance)
+              setCenterCity(tempCenterCity)
               setFilterDialogOpen(false)
               loadOffers(true)
             }}
@@ -1294,6 +1410,7 @@ export default function Home() {
             >
               <MenuItem value="scraped_at">Data scrapowania</MenuItem>
               <MenuItem value="valid_until">Ważna do</MenuItem>
+              <MenuItem value="distance_km">Odległość</MenuItem>
               <MenuItem value="title">Tytuł</MenuItem>
               <MenuItem value="company">Firma</MenuItem>
             </Select>

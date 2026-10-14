@@ -383,7 +383,7 @@ export default function AiDialog({ open, offer, onClose, onSnackbar }: AiDialogP
             margin="normal"
             value={manualCvText}
             onChange={(e) => setManualCvText(e.target.value)}
-            helperText="Treść zostanie zapisana lokalnie (przeglądarka) — nie musisz wklejać za każdym razem."
+            helperText="Treść zostanie zapisana lokalnie (przeglądarka)- nie musisz wklejać za każdym razem."
           />
         )}
 
@@ -470,7 +470,7 @@ export default function AiDialog({ open, offer, onClose, onSnackbar }: AiDialogP
                 helperText={
                   systemPrompt === defaultSystemPrompt
                     ? 'Domyślny prompt (bez zmian)'
-                    : 'Zmodyfikowany — ta wersja zostanie użyta do generowania'
+                    : 'Zmodyfikowany- ta wersja zostanie użyta do generowania'
                 }
               />
               <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -559,7 +559,7 @@ export default function AiDialog({ open, offer, onClose, onSnackbar }: AiDialogP
                       {m.created_at ? new Date(m.created_at).toLocaleString('pl-PL') : ''} •{' '}
                       {m.model}
                       {m.prompt_tokens != null && ` (${m.prompt_tokens}+${m.completion_tokens})`}
-                      {' — '}
+                      {'- '}
                       {m.message.slice(0, 60)}…
                     </Button>
                     <IconButton size="small" onClick={() => handleDeleteMessage(m.id)}>

@@ -48,5 +48,21 @@ class JobOffer(Base):
     valid_until = Column(Date, nullable=True)
     source = Column(String, nullable=False)
     seen = Column(Boolean, default=False, nullable=False, index=True)
+    city_norm = Column(String, nullable=True, index=True)
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    distance_km = Column(Float, nullable=True, index=True)
     scraped_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LocationCache(Base):
+    __tablename__ = "location_cache"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # Normalized city name used for dedup (lowercase, trimmed)
+    city_norm = Column(String, unique=True, nullable=False, index=True)
+    city_display = Column(String, nullable=True)
+    lat = Column(Float, nullable=False)
+    lng = Column(Float, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

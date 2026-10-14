@@ -29,11 +29,13 @@ async def get_offers(
     offset: Optional[int] = Query(0, ge=0),
     source: Optional[str] = None,
     show_seen: bool = Query(False, description="Show seen offers"),
-    sort_by: str = Query("scraped_at", regex="^(scraped_at|valid_until|title|company)$"),
+    sort_by: str = Query("scraped_at", regex="^(scraped_at|valid_until|title|company|distance_km)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
     selected_technologies: Optional[str] = Query(None, description="Comma-separated list of technologies"),
     required_keywords: Optional[str] = Query(None, description="Comma-separated required keywords"),
     excluded_keywords: Optional[str] = Query(None, description="Comma-separated excluded keywords"),
+    max_distance: Optional[float] = Query(None, ge=0, description="Max distance from the center city in km"),
+    city_center: Optional[str] = Query(None, description="City used as the distance center (defaults to home)"),
     db: Session = Depends(get_db)
 ):
     """Get job offers with pagination and filters."""
@@ -67,9 +69,55 @@ async def get_offers(
     elif sort_by == "company":
         order_func = desc if sort_order == "desc" else asc
         query = query.order_by(order_func(JobOffer.company))
+    elif sort_by == "distance_km":
+        order_func = desc if sort_order == "desc" else asc
+        query = query.order_by(order_func(JobOffer.distance_km))
 
     all_matching_offers = query.all()
-    
+
+    # Distance handling: compute from a center city (or home) in memory,
+    # so distance_km in the response matches the selected filter center.
+    center = None
+    if max_distance is not None or (city_center and sort_by == "distance_km"):
+        from app.models import LocationCache
+        from app.services.geo import get_city_coords, haversine_km
+        from app.routers.config import load_config
+
+        center_name = (city_center or "").strip().lower()
+        if center_name:
+            cached = (
+                db.query(LocationCache)
+                .filter(LocationCache.city_norm == center_name)
+                .first()
+            )
+            if cached is None:
+                cached = get_city_coords(db, center_name)
+            if cached and cached.lat != 0.0 and cached.lng != 0.0:
+                center = (cached.lat, cached.lng)
+        else:
+            config = load_config()
+            if config.get("home_lat") is not None:
+                center = (config["home_lat"], config["home_lng"])
+
+        if center is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No distance center available: pass a known city_center or set home location",
+            )
+
+        located = []
+        for offer in all_matching_offers:
+            if offer.lat is None or offer.lng is None:
+                continue
+            distance = round(haversine_km(center[0], center[1], offer.lat, offer.lng), 1)
+            offer.distance_km = distance  # in-memory only, not committed
+            if max_distance is None or distance <= max_distance:
+                located.append(offer)
+        all_matching_offers = located
+
+        if sort_by == "distance_km":
+            all_matching_offers.sort(key=lambda o: o.distance_km, reverse=(sort_order == "desc"))
+
     # Apply keyword filters in memory (for title, company, technologies only)
     if required_keywords or excluded_keywords:
         filtered_offers = []

@@ -27,6 +27,10 @@ class JobOfferCreate(JobOfferBase):
 class JobOffer(JobOfferBase):
     id: int
     seen: bool = False
+    city_norm: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    distance_km: Optional[float] = None
     scraped_at: datetime
     created_at: datetime
 
@@ -44,6 +48,9 @@ class ConfigBase(BaseModel):
     sources: list[str] = ["pracuj_pl"]
     search_in_description: bool = False
     dark_mode: bool = False
+    home_address: str = ""
+    home_lat: Optional[float] = None
+    home_lng: Optional[float] = None
 
 
 class Config(ConfigBase):
